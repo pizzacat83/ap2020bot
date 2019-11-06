@@ -2,28 +2,32 @@ import { get } from 'request';
 import { promisify } from 'util';
 import { evalOnGAS } from './test-util';
 declare const slackCommands: any;
-declare const getFormulaImageURL: Function
+declare const getTeXImageURL: Function;
 
-describe('getFormulaImageURL', () => {
+describe('getTeXImageURL', () => {
   let image_url;
 
   beforeAll(async () => {
     jest.setTimeout(1000 * 20);
     image_url = await evalOnGAS(function() {
-      return getFormulaImageURL('a + b < c & d');
+      return getTeXImageURL('a + b < c & d');
     });
   });
 
   it('returns available image_url', async () => {
-    const { statusCode, headers, body } = await promisify(get)(image_url, undefined) as {statusCode: number, headers: {}, body: string};
+    const { statusCode, headers, body } = (await promisify(get)(image_url, undefined)) as {
+      statusCode: number;
+      headers: {};
+      body: string;
+    };
     expect(statusCode).toBe(200);
     expect(headers['content-type']).toContain('image');
     expect(body).toBeTruthy();
     console.log(image_url);
   });
-})
+});
 
-describe('slackCommands.formula', () => {
+describe('slackCommands.tex', () => {
   beforeAll(async () => {
     jest.setTimeout(1000 * 20);
   });
@@ -33,7 +37,7 @@ describe('slackCommands.formula', () => {
       var e = {
         text: 'a + b > c & d $ e'
       };
-      return slackCommands.formula(e);
+      return slackCommands.tex(e);
     });
     expect(res.response_type).toBe('in_channel');
     expect(res.blocks).toHaveLength(1);
@@ -47,7 +51,7 @@ describe('slackCommands.formula', () => {
       var e = {
         text: 'abc $def$g h\ni$$j\nk$$lmn'
       };
-      return slackCommands.formula(e);
+      return slackCommands.tex(e);
     });
     expect(res.response_type).toBe('in_channel');
     expect(res.blocks).toHaveLength(5);
@@ -63,7 +67,7 @@ describe('slackCommands.formula', () => {
       var e = {
         text: 'abc $def$g h\ni$$j\nk$$'
       };
-      return slackCommands.formula(e);
+      return slackCommands.tex(e);
     });
     expect(res.response_type).toBe('in_channel');
     expect(res.blocks).toHaveLength(4);

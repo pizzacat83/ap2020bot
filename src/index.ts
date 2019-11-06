@@ -34,9 +34,9 @@ global.doPost = (e: GASWebEvent): GoogleAppsScript.Content.TextOutput => {
   }
 };
 
-import './todays_utas';
+//　import './todays_utas';
 
-import './delete_old_messages';
+// import './delete_old_messages';
 
 import './commands';
 

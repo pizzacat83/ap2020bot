@@ -4,14 +4,14 @@ declare var global: any;
 
 global.slackCommands = {};
 
-const getFormulaImageURL = (tex: string): string =>
+const getTeXImageURL = (tex: string): string =>
   'https://chart.googleapis.com/chart?cht=tx&chl=' + encodeURIComponent(tex);
 
 /// #if DEBUG
-global.getFormulaImageURL = getFormulaImageURL;
+global.getTeXImageURL = getTeXImageURL;
 /// #endif
 
-const formula = (params: SlackCommandParams): {} => {
+const tex = (params: SlackCommandParams): {} => {
   // if you want to change username or icon,
   // you should use postMessage instead.
   const re = /([^]*?)((\$\$?)[^]+?\3)/g;
@@ -33,7 +33,7 @@ const formula = (params: SlackCommandParams): {} => {
     }
     blocks.push({
       type: 'image',
-      image_url: getFormulaImageURL(tex),
+      image_url: getTeXImageURL(tex),
       alt_text: tex
     });
   }
@@ -41,7 +41,7 @@ const formula = (params: SlackCommandParams): {} => {
     // regard full text as TeX
     blocks.push({
       type: 'image',
-      image_url: getFormulaImageURL(params.text),
+      image_url: getTeXImageURL(params.text),
       alt_text: params.text
     });
   } else if (last_index < params.text.length) {
@@ -60,7 +60,7 @@ const formula = (params: SlackCommandParams): {} => {
   };
 };
 
-global.slackCommands.formula = formula;
+global.slackCommands.tex = tex;
 
 const question = (params: SlackCommandParams): {} => {
   // bot: @member @member @member
