@@ -16,3 +16,9 @@ dist/
 
 # Libraries
 lib/
+
+# secrets
+creds.json
+.clasprc.json
+.clasp.*.json
+.clasp.json
