@@ -10,18 +10,18 @@ import * as PeopleAPI from './google_people_api';
 
 import * as Trello from './trello';
 
-import { ItemWrapper } from './google_drive_cache_enabled';
+import { ItemWrapper, NotFoundItemWrapper, isItemWrapper, NotFoundItemWrapperWithName, FolderWrapper } from './google_drive_cache_enabled';
 
-const drivelog_id = properties.getProperty('drivelog-id');
-const drivelog_admin_id = properties.getProperty('drivelog-admin-id');
-const rootFolderId = properties.getProperty('root-folder-id');
+const drivelog_id = properties.getProperty('drivelog-id')!;
+const drivelog_admin_id = properties.getProperty('drivelog-admin-id')!;
+const rootFolderId = properties.getProperty('root-folder-id')!;
 
 const fetchAllDriveActivities = (
   root_folder_id: string,
   since?: Date | string
 ): DriveActivityAPI.DriveActivity[] => {
   let activities: DriveActivityAPI.DriveActivity[] = [];
-  let response: DriveActivityAPI.DriveActivityAPIResponse;
+  let response: DriveActivityAPI.DriveActivityAPIResponse | null = null;
   if (since instanceof Date) {
     since = since.getTime().toString();
   }
@@ -32,8 +32,8 @@ const fetchAllDriveActivities = (
       pageToken: response ? response.nextPageToken || null : null,
       consolidationStrategy: { legacy: {} }
     });
-    activities = activities.concat(response.activities);
-  } while (response.nextPageToken);
+    activities = activities.concat(response!.activities);
+  } while (response!.nextPageToken);
   return activities;
 };
 
@@ -53,78 +53,106 @@ const getPersonName = (resourceName: string): string => {
   return resourceName; // TODO: a better approach?
 };
 
-const getDriveItem = (driveItemId: string, isFolder: boolean, driveItem?: GoogleAppsScript.Drive.File|GoogleAppsScript.Drive.Folder): ItemWrapper => {
-  if (driveItemsCache.has(driveItemId)) {
-    return driveItemsCache.get(driveItemId);
+const getTargetName = (target: DriveActivityAPI.Target): string => {
+  if (DriveActivityAPI.isTargetDriveItem(target)) return target.driveItem.title;
+  else if (DriveActivityAPI.isTargetTeamDrive(target)) return target.teamDrive.title;
+  else if (DriveActivityAPI.isTargetFileComment(target)) return target.fileComment.parent.title;
+  else {
+    const _exhaustiveCheck: never = target;
+    return _exhaustiveCheck;
   }
-  let driveItemWrapper: ItemWrapper;
+};
+
+const getDriveItem = (driveItemId: string, isFolder: boolean, driveItem?: GoogleAppsScript.Drive.File|GoogleAppsScript.Drive.Folder): ItemWrapper | NotFoundItemWrapper => {
+  if (driveItemsCache.has(driveItemId)) {
+    return driveItemsCache.get(driveItemId)!;
+  }
+  let driveItemWrapper: ItemWrapper | NotFoundItemWrapper;
   if (driveItem && !driveItemsCache.has(driveItemId)) {
-    driveItemWrapper = { content: driveItem, id: driveItemId } as ItemWrapper;
+    driveItemWrapper = new ItemWrapper({ content: driveItem });
+    driveItemWrapper.id = driveItemId;
   } else {
-    if (isFolder) {
-      driveItemWrapper = { content: DriveApp.getFolderById(driveItemId), id: driveItemId };
-    } else {
-      driveItemWrapper = { content: DriveApp.getFileById(driveItemId), id: driveItemId };
+    try {
+      if (isFolder) {
+        driveItemWrapper = new ItemWrapper({ content: DriveApp.getFolderById(driveItemId), id: driveItemId });
+      } else {
+        driveItemWrapper = new ItemWrapper({ content: DriveApp.getFileById(driveItemId), id: driveItemId });
+      }
+    } catch (e) {
+      console.error(driveItemId, e);
+      driveItemWrapper = new NotFoundItemWrapper(driveItemId , isFolder? 'folder': 'file');
     }
   }
   driveItemsCache.set(driveItemId, driveItemWrapper);
   return driveItemWrapper;
 };
 
-const targetIsFolder = (target: DriveActivityAPI.Target): boolean =>
-  target.driveItem && Boolean(target.driveItem.folder);
-
-const getDriveItemfromTarget = (target: DriveActivityAPI.Target): ItemWrapper => {
-  return getDriveItem(getDriveItemId(target), targetIsFolder(target));
+const getDriveItemfromTarget = (target: DriveActivityAPI.Target): ItemWrapper | NotFoundItemWrapperWithName => {
+  const name = getTargetName(target);
+  const driveItem = getDriveItem(getDriveItemId(target), DriveActivityAPI.targetIsFolder(target));
+  if (isItemWrapper(driveItem)) {
+    driveItem.name = name;
+    return driveItem;
+  } else {
+    return new NotFoundItemWrapperWithName(driveItem, name);
+  }
 };
 
 const getDriveItemId = (target: DriveActivityAPI.Target): string => {
   let itemName: string;
-  if (target.driveItem) itemName = target.driveItem.name;
-  if (target.teamDrive) itemName = target.teamDrive.name;
-  if (target.fileComment) itemName = target.fileComment.parent.name;
+  if (DriveActivityAPI.isTargetDriveItem(target)) itemName = target.driveItem.name;
+  else if (DriveActivityAPI.isTargetTeamDrive(target)) itemName = target.teamDrive.name;
+  else if (DriveActivityAPI.isTargetFileComment(target)) itemName = target.fileComment.parent.name;
+  else {
+    const _exhaustiveCheck: never = target;
+    itemName = _exhaustiveCheck;
+  }
   return itemName.substr('items/'.length);
 };
 
 const paths = new Map<string, string>();
 
-const getPath = (driveItem: ItemWrapper): string => {
-  const rec = (driveItem: ItemWrapper): { path: string; valid: boolean } => {
-    if (paths.has(driveItem.id)) {
-      return { path: paths.get(driveItem.id), valid: true };
-    }
-    if (driveItem.id == rootFolderId) {
-      return { path: '', valid: true };
-    }
-
-    const parents = driveItem.content.getParents();
-    while (parents.hasNext()) {
-      const parent = parents.next();
-      const id = parent.getId();
-      const parentWrapper = getDriveItem(id, true, parent);
-      const res = rec(parentWrapper);
-      if (res.valid) {
-        const path =
-          res.path + '/' + (driveItem.name || (driveItem.name = driveItem.content.getName()));
-        paths.set(driveItem.id, path);
-        return { path, valid: true };
-      } else {
-        return { path: '', valid: false };
+const getPath = (driveItem: ItemWrapper | NotFoundItemWrapperWithName): string => {
+  if (isItemWrapper(driveItem)) {
+    const rec = (driveItem: ItemWrapper): { path: string; valid: boolean } => {
+      if (paths.has(driveItem.id)) {
+        return { path: paths.get(driveItem.id)!, valid: true };
       }
-    }
-    return { path: '', valid: false };
-  };
-  return rec(driveItem).path || driveItem.name || (driveItem.name = driveItem.content.getName());
+      if (driveItem.id == rootFolderId) {
+        return { path: '', valid: true };
+      }
+
+      const parents = driveItem.content.getParents();
+      while (parents.hasNext()) {
+        const parent = parents.next();
+        const id = parent.getId();
+        const parentWrapper = getDriveItem(id, true, parent);
+        const res = rec(parentWrapper as ItemWrapper); // getParentsでunaccessibleなitemがやってくるとは思えない
+        if (res.valid) {
+          const path =
+            res.path + '/' + (driveItem.name || (driveItem.name = driveItem.content.getName()));
+          paths.set(driveItem.id, path);
+          return { path, valid: true };
+        } else {
+          return { path: '', valid: false };
+        }
+      }
+      return { path: '', valid: false };
+    };
+    return rec(driveItem).path || driveItem.name || (driveItem.name = driveItem.content.getName());
+  } else {
+    return driveItem.name;
+  }
 };
 
-const driveItemsCache = new Map<string, ItemWrapper>();
-const ignoredList = JSON.parse(properties.getProperty('ignored-drive-items'));
+const driveItemsCache = new Map<string, ItemWrapper | NotFoundItemWrapper>();
+const ignoredList = JSON.parse(properties.getProperty('ignored-drive-items') || '[]');
 
 const ignored = new Map<string, boolean>();
 
-const isIgnoredItem = (driveItem: ItemWrapper): boolean => {
+const isIgnoredItem = (driveItem: ItemWrapper | NotFoundItemWrapper): boolean => {
   if (ignored.has(driveItem.id)) {
-    return ignored.get(driveItem.id);
+    return ignored.get(driveItem.id)!;
   }
   if (ignoredList.indexOf(driveItem.id) !== -1) {
     ignored.set(driveItem.id, true);
@@ -135,22 +163,27 @@ const isIgnoredItem = (driveItem: ItemWrapper): boolean => {
     return false;
   }
 
-  let parents = driveItem.content.getParents();
-  if (!parents.hasNext()) {
-    ignored.set(driveItem.id, false);
-    return false;
-  }
-  while (parents.hasNext()) {
-    // 全ての親がignoredならtrue
-    const parent = parents.next();
-    const parentWrapper = { content: parent, id: parent.getId() };
-    if (!isIgnoredItem(parentWrapper)) {
+  if (isItemWrapper(driveItem)) {
+    let parents = driveItem.content.getParents();
+    if (!parents.hasNext()) {
       ignored.set(driveItem.id, false);
       return false;
     }
+    while (parents.hasNext()) {
+      // 全ての親がignoredならtrue
+      const parent = parents.next();
+      const parentWrapper = new FolderWrapper({ content: parent, id: parent.getId() });
+      if (!isIgnoredItem(parentWrapper)) {
+        ignored.set(driveItem.id, false);
+        return false;
+      }
+    }
+    ignored.set(driveItem.id, true);
+    return true;
+  } else {
+    // NotFoundItem
+    return false;
   }
-  ignored.set(driveItem.id, true);
-  return true;
 };
 
 const { ignoredActions, colors, japaneseTranslations }: { ignoredActions: string[], colors: {}, japaneseTranslations: {} } = require('./drive_activity_settings.json');
@@ -160,13 +193,15 @@ const formatDateJST = (timestamp: string): string =>
 
 const checkUpdate = (_, since?: string): void => {
   if (!since) {
-    since = properties.getProperty('updateCheck.lastChecked');
-    if (!since) {
+    const lastChecked = properties.getProperty('updateCheck.lastChecked');
+    if (lastChecked) {
+      since = lastChecked;
+    } else {
       throw new Error('No `lastChecked`. To fix, execute updateCheck with argument `since`.');
     }
   }
   const lastChecked = Date.now();
-  const deletedItems = JSON.parse(properties.getProperty('checkUpdate.deletedItems')) || {};
+  const deletedItems = JSON.parse(properties.getProperty('checkUpdate.deletedItems') || '{}');
   for (const activity of fetchAllDriveActivities(rootFolderId, since).reverse()) {
     if (!activity) continue;
     const actionName = getActionName(activity.primaryActionDetail);
@@ -180,25 +215,21 @@ const checkUpdate = (_, since?: string): void => {
     const actorsText = activity.actors
       .map(actor => getPersonName(actor.user.knownUser.personName) + ' さん')
       .join(', ');
-    const timeText = activity.timestamp
+    const timeText = DriveActivityAPI.activityHasTimeStamp(activity)
       ? formatDateJST(activity.timestamp)
-      : formatDateJST(activity.timeRange.startTime) +
-        ' - ' +
-        formatDateJST(activity.timeRange.endTime);
-    const text = `${actorsText}が *${activity.targets.length}* 件のアイテムを *${
-      japaneseTranslations[actionName]
-    }* しました。
+      : `${formatDateJST(activity.timeRange.startTime)} - ${formatDateJST(activity.timeRange.endTime)}`;
+    const text = `${actorsText}が *${activity.targets.length}* 件のアイテムを *${japaneseTranslations[actionName]}* しました。
 発生日時: ${timeText}`;
-    let fileURL: string;
+    let fileURL: string | undefined = undefined;
     if (targets.length <= 20) {
       // attachments
       const attachments = targets.map(target => {
         const driveItem = getDriveItemfromTarget(target);
         return {
           color: colors[actionName],
-          title: japaneseTranslations[actionName] + ': ' + getPath(getDriveItemfromTarget(target)),
+          title: japaneseTranslations[actionName] + ': ' + getPath(driveItem),
           text: '', // TODO: include details
-          title_link: driveItem.url || (driveItem.url = driveItem.content.getUrl())
+          title_link: driveItem.url
         };
       });
       slack.bot.postMessage(drivelog_id, text, {
@@ -222,7 +253,7 @@ const checkUpdate = (_, since?: string): void => {
     if (actionName === 'delete') {
       // trello
       const dueDate = new Date(
-        activity.timestamp ? activity.timestamp : activity.timeRange.endTime
+        DriveActivityAPI.activityHasTimeStamp(activity) ? activity.timestamp : activity.timeRange.endTime
       );
       dueDate.setDate(dueDate.getDate() + 3);
       const card = Trello.request(
@@ -247,7 +278,7 @@ const checkUpdate = (_, since?: string): void => {
             `checklists/${checklist.id}/checkItems`,
             { method: 'post' },
             {
-              name: getPath(driveItem) + ' ' + driveItem.url || (driveItem.url = driveItem.content.getUrl())
+              name: getPath(driveItem) + ' ' + driveItem.url
             }
           );
         }
@@ -255,7 +286,7 @@ const checkUpdate = (_, since?: string): void => {
         Trello.request(`cards/${card.id}/attachments`, { method: 'post' }, { url: fileURL });
       }
       deletedItems[card.id] = targets.map(target => {
-        return { id: getDriveItemId(target), isFolder: targetIsFolder(target) };
+        return { id: getDriveItemId(target), isFolder: DriveActivityAPI.targetIsFolder(target) };
       });
       slack.bot.postMessage(drivelog_admin_id, card.url, { as_user: true });
     }
@@ -295,7 +326,7 @@ const restoreItem = ({ id, isFolder }: { id: string; isFolder: boolean }): void 
 };
 
 const checkTrello = (): void => {
-  const deletedItems = JSON.parse(properties.getProperty('checkUpdate.deletedItems')) || {};
+  const deletedItems = JSON.parse(properties.getProperty('checkUpdate.deletedItems') || '{}');
   const doneCards = Trello.request(`lists/${trelloLists.Done.id}/cards`, { method: 'get' });
   for (const card of doneCards) {
     Trello.request(`cards/${card.id}`, { method: 'put' }, { closed: true });

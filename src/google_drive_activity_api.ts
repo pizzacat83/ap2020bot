@@ -3,12 +3,14 @@ export type DriveActivityAPIResponse = {
   nextPageToken?: string;
 };
 
-export type DriveActivity = {
+interface DriveActivityBase {
   primaryActionDetail: ActionDetail;
   actors: Actor[];
   actions: Action[];
   targets: Target[];
-} & Time;
+}
+
+export type DriveActivity = DriveActivityBase & Time;
 
 // https://developers.google.com/drive/activity/v2/reference/rest/v2/activity/actiondetail
 export type ActionDetail = any; // TODO: implement
@@ -24,43 +26,62 @@ export type User = {
   knownUser: { personName: string; isCurrentUser: boolean };
 };
 
-export type Action = {
+interface ActionBase {
   detail: ActionDetail;
   actor: Actor;
   target: Target;
-} & Time;
+}
 
-export type Target =
-  | {
-      driveItem: DriveItem;
-      teamDrive: undefined;
-      fileComment: undefined;
-    }
-  | {
-      driveItem: undefined;
-      teamDrive: TeamDrive;
-      fileComment: undefined;
-    }
-  | {
-      driveItem: undefined;
-      teamDrive: undefined;
-      fileComment: FileComment;
-    };
+export type Action = ActionBase & Time;
 
-export type DriveItem = {
+export type Target = TargetDriveItem | TargetTeamDrive | TargetFileComment;
+
+// TODO: いらないのでは？
+export interface TargetDriveItem {
+  driveItem: DriveItem;
+}
+
+export interface TargetTeamDrive {
+  teamDrive: TeamDrive;
+}
+
+export interface TargetFileComment {
+  fileComment: FileComment;
+}
+
+export const isTargetDriveItem = (target: Target): target is TargetDriveItem => target.hasOwnProperty('driveItem');
+export const isTargetTeamDrive = (target: Target): target is TargetTeamDrive => target.hasOwnProperty('teamDrive');
+export const isTargetFileComment = (target: Target): target is TargetFileComment => target.hasOwnProperty('fileComment');
+/*
+export type DiscriminatedTarget =
+  | (TargetDriveItem & { kind: 'driveItem' })
+  | (TargetTeamDrive & { kind: 'teamDrive' })
+  | (TargetFileComment & { kind: 'fileComment' });
+
+export const discriminateTarget = (target: Target): DiscriminatedTarget => {
+  if (isTargetDriveItem(target)) return Object.assign({}, target, { kind: 'driveItem' as const });
+  else if (isTargetTeamDrive(target)) return Object.assign({}, target, { kind: 'teamDrive' as const });
+  else if (isTargetFileComment(target)) return Object.assign({}, target, { kind: 'fileComment' as const });
+  else {
+    const _exhaustiveCheck: never = target;
+    return _exhaustiveCheck;
+  }
+}*/
+
+export type DriveItem = FileItem | FolderItem;
+
+export type FileItem = DriveItemBase & { file: File };
+export type FolderItem = DriveItemBase & { folder: Folder };
+
+export const targetIsFolder = (target: Target): target is { driveItem: FolderItem } =>
+  isTargetDriveItem(target) && target.driveItem.hasOwnProperty('folder');
+
+interface DriveItemBase {
   name: string;
   title: string;
   mimeType: string;
   owner: Owner;
-} & (
-  | {
-      file: File;
-      folder: undefined;
-    }
-  | {
-      file: undefined;
-      folder: Folder;
-    });
+}
 
 export type TeamDrive = {
   name: string;
@@ -94,12 +115,24 @@ export type TimeRange = {
   endTime: string;
 };
 
+export type Timestamp = string;
+
 type Time =
   | {
-      timestamp: string;
-      timeRange: undefined;
+      timestamp: Timestamp;
     }
   | {
-      timestamp: undefined;
       timeRange: TimeRange;
     };
+
+export const actionHasTimeStamp = (time: Action): time is ActionBase & { timestamp: Timestamp } =>
+  time.hasOwnProperty('timestamp');
+
+export const actionHasTimeRange = (time: Action): time is ActionBase & { timeRange: TimeRange } =>
+  time.hasOwnProperty('timeRange');
+
+export const activityHasTimeStamp = (time: DriveActivity): time is DriveActivityBase & { timestamp: Timestamp } =>
+  time.hasOwnProperty('timestamp');
+
+export const activityHasTimeRange = (time: DriveActivity): time is DriveActivityBase & { timeRange: TimeRange } =>
+  time.hasOwnProperty('timeRange');
