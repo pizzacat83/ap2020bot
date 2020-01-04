@@ -186,7 +186,7 @@ const isIgnoredItem = (driveItem: ItemWrapper | NotFoundItemWrapper): boolean =>
   }
 };
 
-const { ignoredActions, colors, japaneseTranslations }: { ignoredActions: string[], colors: {}, japaneseTranslations: {} } = require('./drive_activity_settings.json');
+import { ignoredActions, colors, japaneseTranslations } from './drive_activity_settings';
 
 const formatDateJST = (timestamp: string): string =>
   Utilities.formatDate(new Date(timestamp), 'JST', 'yyyy-MM-dd HH:mm:ss');
