@@ -13,7 +13,7 @@ export const japaneseTranslations = {
   create: '追加',
   edit: '更新',
   move: '移動',
-  rename: '移動',
+  rename: '名称変更',
   delete: '削除',
   restore: '復元',
   permissionChange: '権限変更',
