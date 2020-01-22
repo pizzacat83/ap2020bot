@@ -10,7 +10,7 @@ import * as PeopleAPI from './google_people_api';
 
 import * as Trello from './trello';
 
-import { ItemWrapper, NotFoundItemWrapper, isItemWrapper, NotFoundItemWrapperWithName, FolderWrapper } from './google_drive_cache_enabled';
+import { ItemWrapper, NotFoundItemWrapper, isItemWrapper, NotFoundItemWrapperWithName, FolderWrapper , FileWrapper} from './google_drive_cache_enabled';
 
 const drivelog_id = properties.getProperty('drivelog-id')!;
 const drivelog_admin_id = properties.getProperty('drivelog-admin-id')!;
@@ -74,9 +74,9 @@ const getDriveItem = (driveItemId: string, isFolder: boolean, driveItem?: Google
   } else {
     try {
       if (isFolder) {
-        driveItemWrapper = new ItemWrapper({ content: DriveApp.getFolderById(driveItemId), id: driveItemId });
+        driveItemWrapper = new FolderWrapper({ content: DriveApp.getFolderById(driveItemId), id: driveItemId });
       } else {
-        driveItemWrapper = new ItemWrapper({ content: DriveApp.getFileById(driveItemId), id: driveItemId });
+        driveItemWrapper = new FileWrapper({ content: DriveApp.getFileById(driveItemId), id: driveItemId });
       }
     } catch (e) {
       console.error(driveItemId, e);
@@ -191,6 +191,17 @@ import { ignoredActions, colors, japaneseTranslations } from './drive_activity_s
 const formatDateJST = (timestamp: string): string =>
   Utilities.formatDate(new Date(timestamp), 'JST', 'yyyy-MM-dd HH:mm:ss');
 
+const getEmoji = (item: ItemWrapper | NotFoundItemWrapper): string => {
+  if (item.kind === 'file') {
+    return ':file:';
+  } else if (item.kind === 'folder') {
+    return ':file_folder:';
+  } else {
+    const _exhaustiveCheck: never = item.kind;
+    return _exhaustiveCheck;
+  }
+};
+
 const checkUpdate = (_, since?: string): void => {
   if (!since) {
     const lastChecked = properties.getProperty('updateCheck.lastChecked');
@@ -227,7 +238,7 @@ const checkUpdate = (_, since?: string): void => {
         const driveItem = getDriveItemfromTarget(target);
         return {
           color: colors[actionName],
-          title: japaneseTranslations[actionName] + ': ' + getPath(driveItem),
+          title: japaneseTranslations[actionName] + ': ' + getEmoji(driveItem) + getPath(driveItem),
           text: '', // TODO: include details
           title_link: driveItem.url
         };

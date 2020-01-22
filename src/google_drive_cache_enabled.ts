@@ -38,13 +38,13 @@ export class ItemWrapper {
 
 export class FileWrapper extends ItemWrapper {
   content: GoogleAppsScript.Drive.File;
-  kind: 'file';
+  kind = 'file' as const;
   mimetype?: string;
 }
 
 export class FolderWrapper extends ItemWrapper {
   content: GoogleAppsScript.Drive.Folder;
-  kind: 'folder';
+  kind = 'folder' as const;
 }
 
 export class NotFoundItemWrapper {
