@@ -20,8 +20,6 @@ const getTeXImageURL = (tex: string): string => {
   });
   const res = JSON.parse(response.getContentText());
   if (res["result-code"] === 0) {
-    Logger.log(res);
-    Logger.log(res.url);
     return `http://latex2png.com${res.url}`;
   } else {
     throw new Error(res["result-message"]);
