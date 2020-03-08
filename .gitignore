@@ -22,3 +22,5 @@ creds.json
 .clasprc.json
 .clasp.*.json
 .clasp.json
+# ... except for example
+!.clasp.example.json
