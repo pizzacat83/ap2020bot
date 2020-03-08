@@ -3,6 +3,10 @@ Google Apps Script (GAS) で動く，クラスSlackのbot
 
 ## Setup
 ### デプロイ設定
+```bash
+cp .clasp.example.json .clasp.json
+```
+
 [gas-clasp-starter](https://github.com/pizzacat83/gas-clasp-starter#getting-started)のセットアップをする（test環境が不要であれば，その項はスキップ可）
 
 ### Trello連携設定
