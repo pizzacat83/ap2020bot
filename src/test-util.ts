@@ -11,16 +11,18 @@ export const evalOnGAS = async (func: Function, customToken?: string): Promise<a
   const token =
     customToken ||
     valid_token ||
-    (valid_token = await promisify(readFile)(
+    (valid_token = (await promisify(readFile)(
       path.join(__dirname, '..', 'evalOnGAS-token')
-    ).toString());
+    )).toString().trim());
   const response = await promisify(execFile)('clasp', [
     'run',
     'evalOnGAS',
     '--params',
     JSON.stringify([code, token])
   ]);
-  const text = response.stdout.replace(/.*\u001b\[1G/, '');
+  const text = response.stdout.replace(/.*\u001b\[1G/, '')
+    // I dunno the condition but sometimes it shows this
+    .replace(/^Running in dev mode\.\n/, '');
   try {
     const { res, err } = JSON.parse(text);
     if (err) {

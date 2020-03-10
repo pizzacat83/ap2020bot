@@ -24,3 +24,5 @@ creds.json
 .clasp.json
 # ... except for example
 !.clasp.example.json
+
+evalOnGAS-token
